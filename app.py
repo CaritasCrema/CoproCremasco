@@ -176,6 +176,22 @@ def get_gsheet_client():
     """Crea client Google Sheets dalle credenziali nei secrets di Streamlit."""
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
+
+        # Normalizza la private_key: rimuove spazi interni alle righe base64
+        # e ricostruisce il formato PEM corretto con veri \n
+        raw_key = creds_dict.get("private_key", "")
+        if raw_key:
+            # Estrai header, corpo e footer
+            lines = [l.strip() for l in raw_key.strip().splitlines()]
+            header = next((l for l in lines if "BEGIN" in l), "-----BEGIN PRIVATE KEY-----")
+            footer = next((l for l in lines if "END" in l), "-----END PRIVATE KEY-----")
+            # Il corpo è tutto ciò che non è header/footer, senza spazi
+            body_lines = [l for l in lines if "BEGIN" not in l and "END" not in l and l]
+            body = "".join(body_lines)  # unisci tutto
+            # Spezza il corpo in righe da 64 caratteri (formato PEM standard)
+            body_chunked = "\n".join(body[i:i+64] for i in range(0, len(body), 64))
+            creds_dict["private_key"] = f"{header}\n{body_chunked}\n{footer}\n"
+
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         return gspread.authorize(creds)
     except Exception as e:
