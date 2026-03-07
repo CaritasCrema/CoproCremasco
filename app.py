@@ -150,6 +150,31 @@ SHEET_COSTI  = "CostiOrari"
 SHEET_PREV   = "Preventivo"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# FORMATTAZIONE VALUTA ITALIANA
+# ─────────────────────────────────────────────────────────────────────────────
+def fmt_eur(value):
+    """Formatta un numero nel formato italiano: 1.234.567,89 €"""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "— €"
+    # Formatta con separatori anglosassoni poi li inverte
+    formatted = f"{v:,.2f}"                  # es. 1,234,567.89
+    formatted = formatted.replace(",", "X")  # es. 1X234X567.89
+    formatted = formatted.replace(".", ",")  # es. 1X234X567,89
+    formatted = formatted.replace("X", ".")  # es. 1.234.567,89
+    return f"{formatted} €"
+
+def fmt_eur_h(value):
+    """Formatta un costo orario nel formato italiano: 24,09 €/h"""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "— €/h"
+    formatted = f"{v:.2f}".replace(".", ",")
+    return f"{formatted} €/h"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GOOGLE SHEETS
 # ─────────────────────────────────────────────────────────────────────────────
 SCOPES = [
@@ -347,7 +372,7 @@ def pagina_inserimento(ws_rend, ws_costi, ws_prev, partner):
                 scelta = st.selectbox("Figura professionale", ["— seleziona —"] + figure)
                 if scelta != "— seleziona —":
                     costo_orario_usato = co.get((partner, scelta), 0.0)
-                    st.caption(f"Tariffa configurata: € {costo_orario_usato:.2f}/h")
+                    st.caption(f"Tariffa configurata: {fmt_eur_h(costo_orario_usato)}")
                 else:
                     costo_orario_usato = st.number_input("Oppure inserisci costo orario (€/h)",
                                                           min_value=0.0, step=0.01, format="%.2f")
@@ -362,8 +387,8 @@ def pagina_inserimento(ws_rend, ws_costi, ws_prev, partner):
             st.markdown(f"""
             <div class='calc-box'>
               <small style='color:#718096;text-transform:uppercase;letter-spacing:.05em;font-size:0.75rem'>Importo calcolato</small><br>
-              <span style='font-size:1.6rem;font-weight:700;color:#1a365d'>€ {importo_calc:,.2f}</span><br>
-              <small style='color:#a0aec0'>{ore:.1f} h × € {costo_orario_usato:.2f}/h</small>
+              <span style='font-size:1.6rem;font-weight:700;color:#1a365d'>{fmt_eur(importo_calc)}</span><br>
+              <small style='color:#a0aec0'>{ore:.1f} h × {fmt_eur_h(costo_orario_usato)}</small>
             </div>
             """, unsafe_allow_html=True)
 
@@ -379,9 +404,9 @@ def pagina_inserimento(ws_rend, ws_costi, ws_prev, partner):
     prev_fin, prev_cofin = budget.get(azione_sel, (0, 0))
     with st.expander("📋 Preventivo per questa azione"):
         c1, c2, c3 = st.columns(3)
-        c1.metric("Preventivo finanziato",   f"€ {prev_fin:,.2f}")
-        c2.metric("Preventivo cofinanziato", f"€ {prev_cofin:,.2f}")
-        c3.metric("Totale azione",           f"€ {prev_fin + prev_cofin:,.2f}")
+        c1.metric("Preventivo finanziato",   fmt_eur(prev_fin))
+        c2.metric("Preventivo cofinanziato", fmt_eur(prev_cofin))
+        c3.metric("Totale azione",           fmt_eur(prev_fin + prev_cofin))
 
     st.markdown("---")
     if st.button("💾 Salva voce"):
@@ -407,7 +432,9 @@ def pagina_inserimento(ws_rend, ws_costi, ws_prev, partner):
         df_p = df[df["Partner"] == partner].copy()
         if not df_p.empty:
             df_p["Importo (€)"] = pd.to_numeric(df_p["Importo (€)"], errors="coerce").map(
-                lambda x: f"€ {x:,.2f}" if pd.notna(x) else "")
+                lambda x: fmt_eur(x) if pd.notna(x) else "")
+            df_p["Costo Orario (€)"] = pd.to_numeric(df_p["Costo Orario (€)"], errors="coerce").map(
+                lambda x: fmt_eur_h(x) if pd.notna(x) else "")
             st.dataframe(
                 df_p[["Mese","Azione","Tipo Costo","Descrizione",
                       "Ore","Costo Orario (€)","Importo (€)","Finanziamento/Cofinanziamento"]],
@@ -439,17 +466,17 @@ def pagina_quadro_logico(partner):
     tot_fin   = df_ql["Finanziato"].sum()
     tot_cofin = df_ql["Cofinanziato"].sum()
     c1, c2, c3 = st.columns(3)
-    c1.metric("💶 Finanziato assegnato",    f"€ {tot_fin:,.2f}")
-    c2.metric("🤝 Cofinanziato assegnato",  f"€ {tot_cofin:,.2f}")
-    c3.metric("📊 Totale",                  f"€ {tot_fin + tot_cofin:,.2f}")
+    c1.metric("💶 Finanziato assegnato",    fmt_eur(tot_fin))
+    c2.metric("🤝 Cofinanziato assegnato",  fmt_eur(tot_cofin))
+    c3.metric("📊 Totale",                  fmt_eur(tot_fin + tot_cofin))
 
     for area in df_ql["Area"].unique():
         st.markdown(f'<div class="section-header">{area}</div>', unsafe_allow_html=True)
         df_a = df_ql[df_ql["Area"] == area].copy()
-        df_a["CostoUnitario"] = df_a["CostoUnitario"].map(lambda x: f"€ {x:,.2f}")
-        df_a["TotBudget"]     = df_a["TotBudget"].map(lambda x: f"€ {x:,.2f}")
-        df_a["Finanziato"]    = df_a["Finanziato"].map(lambda x: f"€ {x:,.2f}")
-        df_a["Cofinanziato"]  = df_a["Cofinanziato"].map(lambda x: f"€ {x:,.2f}")
+        df_a["CostoUnitario"] = df_a["CostoUnitario"].map(fmt_eur)
+        df_a["TotBudget"]     = df_a["TotBudget"].map(fmt_eur)
+        df_a["Finanziato"]    = df_a["Finanziato"].map(fmt_eur)
+        df_a["Cofinanziato"]  = df_a["Cofinanziato"].map(fmt_eur)
         cols = ["Azione","Attività","Costo","RisorseUmane","CostoUnitario",
                 "Quantità","UdM","TotBudget","Finanziato","Cofinanziato"]
         if is_coord:
@@ -508,8 +535,8 @@ def pagina_gestione_preventivo(ws_costi, ws_prev):
         st.markdown('<div class="section-header">Preventivo attuale</div>', unsafe_allow_html=True)
         budget = carica_preventivo(ws_prev)
         df_prev = pd.DataFrame([
-            {"Azione": k, "Finanziato (€)": v[0], "Cofinanziato (€)": v[1],
-             "Totale (€)": v[0] + v[1]}
+            {"Azione": k, "Finanziato": fmt_eur(v[0]), "Cofinanziato": fmt_eur(v[1]),
+             "Totale": fmt_eur(v[0] + v[1])}
             for k, v in budget.items()
         ])
         st.dataframe(df_prev, use_container_width=True, hide_index=True)
@@ -544,7 +571,7 @@ def pagina_gestione_preventivo(ws_costi, ws_prev):
         df_co = carica_df(ws_costi, ["Partner","FiguraProfessionale","CostoOrario"])
         if not df_co.empty:
             df_co["CostoOrario"] = pd.to_numeric(df_co["CostoOrario"], errors="coerce").map(
-                lambda x: f"€ {x:.2f}/h" if pd.notna(x) else "")
+                lambda x: fmt_eur_h(x) if pd.notna(x) else "")
             st.dataframe(df_co, use_container_width=True, hide_index=True)
         else:
             st.info("Nessuna tariffa ancora configurata.")
@@ -570,7 +597,7 @@ def pagina_gestione_preventivo(ws_costi, ws_prev):
                         break
                 if not found:
                     ws_costi.append_row([p_co, fig_co.strip(), tar_co])
-                st.success(f"✅ {p_co} — {fig_co} → € {tar_co:.2f}/h")
+                st.success(f"✅ {p_co} — {fig_co} → {fmt_eur_h(tar_co)}")
                 st.rerun()
 
         if not df_co.empty:
@@ -608,9 +635,9 @@ def pagina_cruscotto(ws_rend, ws_prev):
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💶 Finanziamento rendicontato",
-              f"€ {tot_fr:,.2f}", delta=f"{tot_fr/tot_fp*100:.1f}% del preventivo" if tot_fp else "")
+              fmt_eur(tot_fr), delta=f"{tot_fr/tot_fp*100:.1f}% del preventivo" if tot_fp else "")
     c2.metric("🤝 Cofinanziamento rendicontato",
-              f"€ {tot_cr:,.2f}", delta=f"{tot_cr/tot_cp*100:.1f}% del preventivo" if tot_cp else "")
+              fmt_eur(tot_cr), delta=f"{tot_cr/tot_cp*100:.1f}% del preventivo" if tot_cp else "")
     c3.metric("🕐 Ore totali inserite", f"{df['Ore'].sum():,.0f} h")
     c4.metric("📝 Voci inserite", len(df))
 
@@ -636,7 +663,7 @@ def pagina_cruscotto(ws_rend, ws_prev):
                       <div style='background:#e2e8f0;border-radius:999px;height:10px;'>
                         <div style='width:{min(perc,100):.1f}%;background:{color};height:100%;border-radius:999px;'></div>
                       </div>
-                      <small style='color:#718096'>€ {rend:,.2f} / € {prev:,.2f}</small>
+                      <small style='color:#718096'>{fmt_eur(rend)} / {fmt_eur(prev)}</small>
                     </div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="section-header">Dettaglio voci</div>', unsafe_allow_html=True)
@@ -651,7 +678,9 @@ def pagina_cruscotto(ws_rend, ws_prev):
     if fm != "Tutti": df_v = df_v[df_v["Mese"] == fm]
 
     if not df_v.empty:
-        df_v["Importo (€)"] = df_v["Importo (€)"].map(lambda x: f"€ {x:,.2f}")
+        df_v["Importo (€)"] = df_v["Importo (€)"].map(fmt_eur)
+        df_v["Costo Orario (€)"] = pd.to_numeric(df_v["Costo Orario (€)"], errors="coerce").map(
+            lambda x: fmt_eur_h(x) if pd.notna(x) else "")
         st.dataframe(df_v[["Timestamp","Partner","Mese","Azione","Tipo Costo","Descrizione",
                             "Ore","Costo Orario (€)","Importo (€)","Finanziamento/Cofinanziamento","Note"]],
                      use_container_width=True, hide_index=True)
